@@ -13,7 +13,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(BoatModel.class)
 public class BoatModelMixin {
-
     @Inject(method = "createBodyModel", at = @At("HEAD"), cancellable = true)
     private static void injectOldModel(CallbackInfoReturnable<LayerDefinition> cir) {
         MeshDefinition meshdefinition = new MeshDefinition();

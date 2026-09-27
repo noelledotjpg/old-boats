@@ -8,8 +8,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
 @Mixin(ItemInHandRenderer.class)
-public abstract class ItemInHandRendererMixin {
-
+public class ItemInHandRendererMixin {
     @Redirect(method = "tick", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/player/LocalPlayer;isHandsBusy()Z"))
     private boolean oldboats$dontLowerHandInBoat(LocalPlayer player) {
         return player.isHandsBusy() && !(player.getVehicle() instanceof Boat);

@@ -3,19 +3,13 @@ package com.nikohalfkino.oldboats.mixin;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundSource;
-import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.util.Mth;
-import net.minecraft.world.damagesource.DamageSource;
-import net.minecraft.world.entity.vehicle.DismountHelper;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EntityDimensions;
-import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.MoverType;
-import net.minecraft.world.entity.Pose;
+import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.vehicle.Boat;
+import net.minecraft.world.entity.vehicle.DismountHelper;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.Level;
@@ -32,35 +26,28 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(Boat.class)
 public abstract class BoatMixin extends Entity {
-
     @Shadow private boolean inputLeft;
     @Shadow private boolean inputRight;
     @Shadow private boolean inputUp;
     @Shadow private boolean inputDown;
-    @Shadow private void tickLerp() { throw new UnsupportedOperationException(); }
-
-    @Unique
-    private double oldboats$speedMultiplier = 0.07D;
-
-    @Unique
-    private double oldboats$fallDistance = 0.0D;
-
-    @Unique
-    private static final float OLDBOATS$FALL_BREAK_DISTANCE = 5.0F;
-
+    @Shadow private void tickLerp() {
+        throw new UnsupportedOperationException();
+    }
+    @Unique private double oldboats$speedMultiplier = 0.07D;
+    @Unique private double oldboats$fallDistance = 0.0D;
+    @Unique private static final float OLDBOATS$FALL_BREAK_DISTANCE = 5.0F;
     // 1.8.9 boat hitbox
-    private static final EntityDimensions OLDBOATS$DIMENSIONS = EntityDimensions.fixed(1.5F, 0.6F);
+    @Unique private static final EntityDimensions OLDBOATS$DIMENSIONS = EntityDimensions.fixed(1.5F, 0.6F);
 
     public EntityDimensions getDimensions(Pose pose) {
         return OLDBOATS$DIMENSIONS;
     }
 
-    public BoatMixin(EntityType<?> type, Level level) {
-        super(type, level);
+    public BoatMixin(EntityType<?> entityType, Level level) {
+        super(entityType, level);
     }
 
     @Inject(method = "tick", at = @At("HEAD"), cancellable = true)
@@ -280,7 +267,7 @@ public abstract class BoatMixin extends Entity {
         double velSpeed = Math.sqrt(motionX * motionX + motionZ * motionZ);
 
         if (!turnedInPlace && velSpeed > 0.02D) {
-            targetYaw = (double) ((float) (Mth.atan2(-motionX, motionZ) * 180.0D / Math.PI));
+            targetYaw = (float) (Mth.atan2(-motionX, motionZ) * 180.0D / Math.PI);
         }
 
         double yawDelta = Mth.wrapDegrees(targetYaw - (double) this.getYRot());
@@ -303,51 +290,37 @@ public abstract class BoatMixin extends Entity {
         ci.cancel();
     }
 
-    // crashing into walls has been removed and instead the boat will break when blown up
-    @Inject(method = "hurt", at = @At("HEAD"), cancellable = true)
-    private void oldboats$hurt(DamageSource pSource, float pAmount, CallbackInfoReturnable<Boolean> cir) {
-        if (this.isRemoved()) {
-            cir.setReturnValue(false);
-            return;
-        }
-
-        if (!pSource.is(DamageTypeTags.IS_EXPLOSION)) {
-            return;
-        }
-
-        if (!this.level().isClientSide) {
-            this.oldboats$breakApart();
-        }
-
-        cir.setReturnValue(true);
-    }
-
     @Unique
     private void oldboats$breakApart() {
         Boat self = (Boat) (Object) this;
-
-        this.level().playSound(null, this.getX(), this.getY(), this.getZ(),
+        if (this.level() instanceof ServerLevel serverlevel) {
+            serverlevel.playSound(null, this.getX(), this.getY(), this.getZ(),
                 SoundType.WOOD.getBreakSound(), SoundSource.NEUTRAL, 1.0F, 1.0F);
 
-        // block breaking particles because its cool
-        BlockParticleOption breakParticle = new BlockParticleOption(ParticleTypes.BLOCK, Blocks.OAK_PLANKS.defaultBlockState());
+            // block breaking particles because its cool
+            BlockParticleOption breakParticle = new BlockParticleOption(ParticleTypes.BLOCK, Blocks.OAK_PLANKS.defaultBlockState());
 
-        for (int i = 0; i < 10; ++i) {
-            this.level().addParticle(breakParticle,
-                    this.getX() + (this.random.nextDouble() - 0.5D) * this.getBbWidth(),
-                    this.getY() + this.random.nextDouble() * this.getBbHeight(),
-                    this.getZ() + (this.random.nextDouble() - 0.5D) * this.getBbWidth(),
-                    0.0D, 0.0D, 0.0D);
-        }
+            serverlevel.sendParticles(
+                breakParticle,
+                this.getX(),
+                this.getY(),
+                this.getZ(),
+                10,
+                (this.random.nextDouble() - 0.5D) * this.getBbWidth(),
+                this.random.nextDouble() * this.getBbHeight(),
+                (this.random.nextDouble() - 0.5D) * this.getBbWidth(),
+                0.1
+            );
 
-        this.discard();
+            this.discard();
 
-        if (this.level().getGameRules().getBoolean(GameRules.RULE_DOENTITYDROPS)) {
-            for (int j1 = 0; j1 < 3; ++j1) {
-                this.spawnAtLocation(self.getVariant().getPlanks());
-            }
-            for (int k1 = 0; k1 < 2; ++k1) {
-                this.spawnAtLocation(Items.STICK);
+            if (serverlevel.getGameRules().getBoolean(GameRules.RULE_DOENTITYDROPS)) {
+                for (int j1 = 0; j1 < 3; ++j1) {
+                    this.spawnAtLocation(self.getVariant().getPlanks());
+                }
+                for (int k1 = 0; k1 < 2; ++k1) {
+                    this.spawnAtLocation(Items.STICK);
+                }
             }
         }
     }
@@ -471,13 +444,8 @@ public abstract class BoatMixin extends Entity {
     }
 
     @Overwrite
-    public double getPassengersRidingOffset() {
-        return 0D;
-    }
-
-    @Overwrite
-    protected float getSinglePassengerXOffset() {
-        return -0.4F;
+    protected Vec3 getPassengerAttachmentPoint(Entity entity, EntityDimensions dimensions, float partialTick) {
+        return new Vec3(0D, dimensions.height() / 3.0D, -0.4D).yRot(-this.getYRot() * ((float)Math.PI / 180F));
     }
 
     @Overwrite
